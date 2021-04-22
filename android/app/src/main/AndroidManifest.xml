@@ -1,8 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.savss.popular_wine_classifier">
    <application
-        android:label="popular_wine_classifier"
-        android:icon="@mipmap/ic_launcher">
+        android:label="Popular Wine Classifier"
+        android:icon="@mipmap/launcher_icon">
         <activity
             android:name=".MainActivity"
             android:launchMode="singleTop"

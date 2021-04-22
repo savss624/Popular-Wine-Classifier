@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_easyloading/flutter_easyloading.dart';
+import 'package:page_transition/page_transition.dart';
 import 'package:tflite/tflite.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:camera/camera.dart';
@@ -16,6 +19,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      builder: EasyLoading.init(),
       home: Recognizer(),
     );
   }
@@ -26,30 +30,27 @@ class Recognizer extends StatefulWidget {
   _RecognizerState createState() => _RecognizerState();
 }
 
+String loadImage = '';
+List loadResult = [];
+var status = 'live';
+var sheetStatus = 'closed';
 class _RecognizerState extends State<Recognizer> {
   Future<File> imageFile;
-  File _image;
   List results = [];
   ImagePicker imagePicker;
 
-  _imgFromCamera() async {
-    PickedFile pickedFile =
-    await imagePicker.getImage(source: ImageSource.camera);
-    _image = File(pickedFile.path);
-    setState(() {
-      _image;
-      classify(context);
-    });
-  }
-
-  _imgFromGallery() async {
-    PickedFile pickedFile =
-    await imagePicker.getImage(source: ImageSource.gallery);
-    _image = File(pickedFile.path);
-    setState(() {
-      _image;
-      classify(context);
-    });
+  fromGallery() async {
+    try {
+      PickedFile pickedFile = await imagePicker.getImage(source: ImageSource.gallery);
+      loadResult = await classify(pickedFile.path);
+      loadImage = pickedFile.path;
+      setState(() {
+        sheetStatus = 'open';
+      });
+      print('open');
+    } catch (e) {
+      print(e);
+    }
   }
 
   CameraController _controller;
@@ -118,9 +119,7 @@ class _RecognizerState extends State<Recognizer> {
     return results;
   }
 
-  String loadImage = '';
-  List loadResult = [];
-  runModel(context) async {
+  fromCamera() async {
     try {
       if (_controller == null || !_controller.value.isInitialized) {
         return;
@@ -132,9 +131,10 @@ class _RecognizerState extends State<Recognizer> {
       );
 
       await _controller.takePicture(path);
-      setState(() async {
-        loadResult = await classify(path);
-        loadImage = path;
+      loadResult = await classify(path);
+      loadImage = path;
+      setState(() {
+        sheetStatus = 'open';
       });
     } catch (e) {
       print('Error : ' + e.toString());
@@ -144,9 +144,12 @@ class _RecognizerState extends State<Recognizer> {
   @override
   void initState() {
     super.initState();
-    initCamera();
     imagePicker = ImagePicker();
     loadModel();
+    initCamera();
+    Timer(Duration(seconds: 1), () {
+      sheetStatus = 'closed';
+    });
   }
 
   @override
@@ -158,10 +161,14 @@ class _RecognizerState extends State<Recognizer> {
   @override
   Widget build(BuildContext context) {
     if (_controller == null || !_controller.value.isInitialized) {
-      return Center(
-        child: CircularProgressIndicator(),
+      if(!EasyLoading.isShow)
+        EasyLoading.show(status: 'loading...');
+      return Container(
+        color: Colors.black,
       );
     }
+    else if(EasyLoading.isShow)
+      EasyLoading.dismiss();
 
     return Scaffold(
       backgroundColor: Color(0xff202020),
@@ -227,45 +234,170 @@ class _RecognizerState extends State<Recognizer> {
                     )
                   ],
                 ),
-                Center(
-                  child: Ink(
-                    width: 100,
-                    height: 200,
-                    decoration: BoxDecoration(
-                      color: Color(0xfffdea94),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
+                Stack(
+                  children: [
+                    Center(
+                      child: Ink(
+                        width: 80,
+                        height: 160,
+                        decoration: BoxDecoration(
                           color: Color(0xfffdea94),
-                          offset: Offset(4.0, 4.0),
-                          blurRadius: 15.0,
-                          spreadRadius: 1.0,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Color(0xfffdea94),
+                              offset: Offset(4.0, 4.0),
+                              blurRadius: 15.0,
+                              spreadRadius: 1.0,
+                            ),
+                            BoxShadow(
+                              color: Color(0xfffdea94),
+                              offset: Offset(-4.0, -4.0),
+                              blurRadius: 15.0,
+                              spreadRadius: 1.0,
+                            )
+                          ],
                         ),
-                        BoxShadow(
-                          color: Color(0xfffdea94),
-                          offset: Offset(-4.0, -4.0),
-                          blurRadius: 15.0,
-                          spreadRadius: 1.0,
-                        )
-                      ],
-                    ),
-                    child: IconButton(
-                      iconSize: 50.0,
-                      onPressed: () {
-                        runModel(context);
-                      },
-                      icon: Icon(
-                        Icons.wine_bar,
-                        color: Colors.black,
+                        child: IconButton(
+                          iconSize: 40.0,
+                          onPressed: () async {
+                            if(!EasyLoading.isShow)
+                              EasyLoading.show(status: 'loading...');
+                            if(status == 'live')
+                              await fromCamera();
+                            else
+                              await fromGallery();
+                            _controller.dispose();
+                            Navigator.pushReplacement(
+                              context,
+                              PageTransition(
+                                  child: Recognizer(),
+                                  type: PageTransitionType.bottomToTop,
+                                  duration: Duration(milliseconds: 750)),
+                            );
+                            if(EasyLoading.isShow)
+                              EasyLoading.dismiss();
+                          },
+                          icon: Icon(
+                            Icons.wine_bar,
+                            color: Colors.black,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Padding(
+                        padding: EdgeInsets.only(right: 24, top: 80),
+                        child: Container(
+                          height: 40,
+                          width: 80,
+                          decoration: BoxDecoration(
+                              color: Color(0xff343434),
+                              borderRadius: BorderRadius.all(Radius.circular(30))
+                          ),
+                          child: FlatButton(
+                            child: Padding(
+                              padding: EdgeInsets.only(bottom: 8),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Container(
+                                    height: 2,
+                                    width: 40,
+                                    decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.all(Radius.circular(15)),
+                                        color: status == 'gallery' ? Color(0xfffdea94) : Color(0xff343434),
+                                    ),
+                                  ),
+                                  Text(
+                                    'Gallery',
+                                    style: TextStyle(
+                                      color: Color(0xfffdea94),
+                                      fontFamily: 'Charmonman',
+                                      fontWeight: FontWeight.bold
+                                    ),
+                                  ),
+                                  Container(
+                                    height: 2,
+                                    width: 2,
+                                    decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.all(Radius.circular(15)),
+                                        color: Color(0xfffdea94),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                status = 'gallery';
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: EdgeInsets.only(left: 24, top: 80),
+                        child: Container(
+                          height: 40,
+                          width: 80,
+                          decoration: BoxDecoration(
+                              color: Color(0xff343434),
+                              borderRadius: BorderRadius.all(Radius.circular(30))
+                          ),
+                          child: FlatButton(
+                            child: Padding(
+                              padding: EdgeInsets.only(bottom: 8),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Container(
+                                    height: 2,
+                                    width: 40,
+                                    decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.all(Radius.circular(15)),
+                                        color: status == 'live' ? Color(0xfffdea94) : Color(0xff343434)
+                                    ),
+                                  ),
+                                  Text(
+                                    'Live',
+                                    style: TextStyle(
+                                      color: Color(0xfffdea94),
+                                      fontFamily: 'Charmonman',
+                                      fontWeight: FontWeight.bold
+                                    ),
+                                  ),
+                                  Container(
+                                    height: 2,
+                                    width: 2,
+                                    decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.all(Radius.circular(15)),
+                                        color: Color(0xfffdea94),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                status = 'live';
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                    )
+                  ],
                 ),
               ],
             ),
             SizedBox.expand(
               child: DraggableScrollableSheet(
-                initialChildSize: .08,
+                initialChildSize: sheetStatus == 'closed' ? .08 : .85,
                 minChildSize: .08,
                 maxChildSize: .85,
                 builder: (BuildContext context, ScrollController scrollController) {
@@ -287,51 +419,140 @@ class _RecognizerState extends State<Recognizer> {
                             ),
                           ),
                           Expanded(
-                            child: ListView.builder(
-                              controller: scrollController,
-                              itemBuilder: (context, index) {
-                                return Column(
-                                  children: [
-                                    if(index == 0) Column(
+                            child: Stack(
+                              children: [
+                                ListView.builder(
+                                  controller: scrollController,
+                                  itemBuilder: (context, index) {
+                                    return Column(
                                       children: [
-                                        SizedBox(height: 24),
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(20),
-                                          child: Image.file(
-                                            File(loadImage),
-                                            fit: BoxFit.cover,
-                                            height: 240,
-                                            width: 300,
-                                          ),
-                                        ),
-                                        SizedBox(height: 16),
-                                      ],
-                                    ),
-                                    Row(
-                                      children: [
-                                        Flexible(
-                                          child: Text(
-                                            loadResult[index]['label'].toString().split('|')[1] + ' - ',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 15,
+                                        if(index == 0) Column(
+                                          children: [
+                                            SizedBox(height: 24),
+                                            ClipRRect(
+                                              borderRadius: BorderRadius.circular(20),
+                                              child: Image.file(
+                                                File(loadImage),
+                                                fit: BoxFit.cover,
+                                                height: 200,
+                                                width: 240,
+                                              ),
                                             ),
-                                          ),
+                                            SizedBox(height: 16),
+                                            Center(
+                                              child: Text(
+                                                'Predictions',
+                                                style: TextStyle(
+                                                    color: Color(0xfffdea94),
+                                                    fontWeight: FontWeight.bold,
+                                                  fontSize: 24,
+                                                  fontFamily: 'Charmonman'
+                                                ),
+                                              ),
+                                            ),
+                                            SizedBox(height: 16),
+                                            Table(
+                                              border: TableBorder.all(),
+                                              children: [
+                                                TableRow(
+                                                  children: [
+                                                    Container(
+                                                      height: 36,
+                                                      color: Color(0xfffdea94),
+                                                      child: Center(
+                                                        child: Text(
+                                                            'Wine',
+                                                          style: TextStyle(
+                                                            color: Colors.black,
+                                                            fontWeight: FontWeight.bold,
+                                                            fontFamily: 'Charmonman'
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    Container(
+                                                      height: 36,
+                                                      color: Color(0xfffdea94),
+                                                      child: Center(
+                                                        child: Text(
+                                                          'Model Confidence',
+                                                          style: TextStyle(
+                                                              color: Colors.black,
+                                                              fontWeight: FontWeight.bold,
+                                                              fontFamily: 'Charmonman'
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ]
+                                                ),
+                                              ]
+                                            ),
+                                          ],
                                         ),
-                                        Text(
-                                          (loadResult[index]['confidence'] as double).toStringAsFixed(2),
-                                          style: TextStyle(
-                                            color: Colors.orange,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 20,
-                                          ),
+                                        Table(
+                                          border: TableBorder.all(),
+                                          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                                          children: [
+                                            TableRow(
+                                              children: [
+                                                TableCell(
+                                                  child: Text(
+                                                    loadResult[index]['label'].toString().split('|')[1],
+                                                    textAlign: TextAlign.center,
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 15,
+                                                      color: Color(0xfffdea94),
+                                                      fontFamily: 'Charmonman'
+                                                    ),
+                                                  ),
+                                                ),
+                                                Container(
+                                                  height: 48,
+                                                  child: Center(
+                                                    child: Text(
+                                                      ((loadResult[index]['confidence'] * 100) as double).toStringAsFixed(2) + ' %',
+                                                      style: TextStyle(
+                                                        color: Color(0xfffdea94),
+                                                        fontWeight: FontWeight.bold,
+                                                        fontSize: 16,
+                                                        fontFamily: 'Charmonman'
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
                                         ),
                                       ],
-                                    ),
-                                  ],
-                                );
-                              },
-                              itemCount: loadResult.length,
+                                    );
+                                  },
+                                  itemCount: loadResult.length,
+                                ),
+                                ListView.builder(
+                                  controller: scrollController,
+                                  itemBuilder: (context, index) {
+                                    return Container(
+                                      height: 500,
+                                      child: Center(
+                                          child: Text(
+                                              "Sorry, But We Don't Have Any Picture To Run The Model On",
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              color: loadResult.length == 0 ? Colors.grey : Colors.transparent,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 24,
+                                              fontFamily: 'Charmonman'
+                                            ),
+                                          )
+                                      ),
+                                    );
+                                  },
+                                  itemCount: 1,
+                                ),
+                              ],
                             ),
                           )
                         ],
